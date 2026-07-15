@@ -1,0 +1,65 @@
+@font-face {
+  font-family: 'BunnyCaption';
+  src: url('./assets/fonts/BunnyFonts-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'NanumHandwriting';
+  src: url('./assets/fonts/NanumHandwriting-JungHakSaeng.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --text: #4a4550;
+  --text-h: #1c1a20;
+  --bg: #fdfcfb;
+  --border: #e5e1e6;
+  --accent: #b5567a;
+  color-scheme: light dark;
+
+  font: 16px/1.5 system-ui, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #c9c5cf;
+    --text-h: #f3f1f5;
+    --bg: #17151a;
+    --border: #322e37;
+    --accent: #e28fab;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--text-h);
+  margin: 0;
+}
+
+button {
+  font: inherit;
+}
