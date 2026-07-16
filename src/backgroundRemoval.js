@@ -3,10 +3,16 @@
 // this never makes a network call at runtime — consistent with the rest of
 // the app's "everything stays in your browser" guarantee.
 //
+// The model is `selfie_segmenter`, i.e. it only knows "person vs. not
+// person" — it does not do general object/animal/product segmentation.
+// On a photo with no person it will produce a low-confidence mask
+// everywhere (effectively "no clear subject"), not an error. Keep the UI
+// copy honest about "person only" rather than implying general cutout.
+//
 // This module is the single seam between the app and whatever segmentation
 // backend is in use. If this ever gets swapped for a different engine
-// (e.g. a higher-quality matting model), only this file's internals should
-// need to change — callers just get back a binary mask.
+// (e.g. a higher-quality general-purpose matting model), only this file's
+// internals should need to change — callers just get back a binary mask.
 
 import { FilesetResolver, ImageSegmenter } from '@mediapipe/tasks-vision'
 

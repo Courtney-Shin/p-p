@@ -8,7 +8,7 @@ import { STICKER_SHAPES, drawSticker } from './stickers'
 import { analyzeImage } from './analyzeImage'
 import { extractPalette, frameColorsFromPalette, complementaryHex } from './palette'
 import ColorWheel from './ColorWheel'
-import { selectStickers, placeSticker, guessPhotoType, STICKER_COUNT_RANGES } from './stickerRules'
+import { selectStickers, placeSticker, guessPhotoType, STICKER_COUNT_RANGES, enforceCoverageLimit } from './stickerRules'
 import { DECORATION_MODES, DECORATION_MODE_KEYS, applyStickerCountBias } from './decorationModes'
 import { randomFont } from './fonts'
 import { getSubjectMask, applyMaskToImage, preloadSegmenter } from './backgroundRemoval'
@@ -26,6 +26,7 @@ const UI_TEXT = {
     download: 'Download',
     startOver: 'Start over',
     mood: 'Mood',
+    moodHint: "Changes the quick-add sticker palette below — frame and auto-placed stickers follow Scene instead.",
     frameStyle: 'Frame style',
     stickers: 'Stickers',
     moreStickers: 'More stickers',
@@ -44,12 +45,12 @@ const UI_TEXT = {
     overlayGlossy: 'Glossy',
     overlayGrain: 'Grain',
     background: 'Background',
-    removeBackground: 'Remove background',
+    removeBackground: 'Remove background (person only)',
     removingBackground: 'Removing background…',
     undoBackground: 'Restore background',
     stitchOutline: 'Stitch outline',
     stitchHint: 'Remove the background first to add a stitched edge.',
-    bgError: "Couldn't remove the background. Try a different photo.",
+    bgError: "Couldn't detect a person to cut out. Try a different photo.",
   },
   ko: {
     title: '✨ 포토 데코레이터',
@@ -58,6 +59,7 @@ const UI_TEXT = {
     download: '다운로드',
     startOver: '처음부터',
     mood: '무드',
+    moodHint: '아래 스티커 팔레트 색상만 바뀌어요 — 프레임과 자동 스티커는 장면(Scene)을 따라가요.',
     frameStyle: '프레임 스타일',
     stickers: '스티커',
     moreStickers: '스티커 더보기',
@@ -76,12 +78,12 @@ const UI_TEXT = {
     overlayGlossy: '광택',
     overlayGrain: '그레인',
     background: '배경',
-    removeBackground: '배경 제거',
+    removeBackground: '배경 제거 (인물 전용)',
     removingBackground: '배경 제거 중…',
     undoBackground: '배경 복원',
     stitchOutline: '스티치 아웃라인',
     stitchHint: '먼저 배경을 제거하면 바느질 테두리를 추가할 수 있어요.',
-    bgError: '배경을 제거하지 못했어요. 다른 사진으로 시도해보세요.',
+    bgError: '사진에서 인물을 찾지 못했어요. 다른 사진으로 시도해보세요.',
   },
 }
 
@@ -134,7 +136,7 @@ function App() {
     const picks = selectStickers({ scene: analysis.scene, photoType, palette }).slice(0, biasedRange[1])
 
     const subjectZone = { x: 0.2, y: 0.15, w: 0.6, h: 0.65 }
-    const newStickers = picks.map((pick, i) => {
+    const candidateStickers = picks.map((pick, i) => {
       const radius = 0.045 + (i % 2 === 0 ? 0.01 : 0)
       const { x, y } = placeSticker({ index: i, radius, subjectZone })
       return {
@@ -146,6 +148,13 @@ function App() {
         color: pick.color,
         rotation: (Math.random() - 0.5) * 0.4,
       }
+    })
+    // Drop stickers once total coverage would exceed the photo-type's
+    // area cap, so a "high" sticker-count bias mode can't visually bury
+    // the photo under decoration.
+    const newStickers = enforceCoverageLimit(candidateStickers, photoType, {
+      w: CANVAS_SIZE.width,
+      h: CANVAS_SIZE.height,
     })
     setStickers(newStickers)
   }
@@ -195,8 +204,7 @@ function App() {
       regenerateStickers(analysis, palette, modePreset)
     }
     img.src = url
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [lang, modeKey])
 
   const onFileInputChange = (e) => {
     handleFile(e.target.files?.[0])
@@ -216,6 +224,13 @@ function App() {
     const { text, category } = randomSceneQuote(key, lang, lastCategory, mode.captionWeights)
     setQuote(text)
     setLastCategory(category)
+    // Scene drives the auto-placed sticker pool (SCENE_CONTEXTUAL), so an
+    // override needs to regenerate stickers too, not just the caption —
+    // otherwise the sticker set stays tied to the old, now-stale scene.
+    if (detection) {
+      const palette = extractPalette(detection.imageData)
+      regenerateStickers({ ...detection, scene: key }, palette, mode)
+    }
   }
 
   const shuffleQuote = () => {
@@ -520,6 +535,7 @@ function App() {
                     </button>
                   ))}
                 </div>
+                <p className="hint">{t.moodHint}</p>
               </section>
             )}
 
