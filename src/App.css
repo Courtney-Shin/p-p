@@ -120,6 +120,35 @@ button.ghost {
   cursor: pointer;
 }
 
+button.ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.stitch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.stitch-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.stitch-toggle input[type='checkbox'] {
+  cursor: pointer;
+}
+
+.bg-error {
+  color: #c0355a;
+  opacity: 1;
+}
+
 .editor-panel {
   display: flex;
   flex-direction: column;

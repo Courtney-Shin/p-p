@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import PhotoCanvas from './PhotoCanvas'
 import { MOODS, MOOD_KEYS } from './moods'
 import { SCENES, SCENE_KEYS, randomSceneQuote } from './scenes'
@@ -10,6 +10,8 @@ import { extractPalette, frameColorsFromPalette } from './palette'
 import { selectStickers, placeSticker, guessPhotoType, STICKER_COUNT_RANGES } from './stickerRules'
 import { DECORATION_MODES, DECORATION_MODE_KEYS, applyStickerCountBias } from './decorationModes'
 import { randomFont } from './fonts'
+import { getSubjectMask, applyMaskToImage, preloadSegmenter } from './backgroundRemoval'
+import { traceContour } from './stitchOutline'
 import './App.css'
 
 const CANVAS_SIZE = { width: 640, height: 760 }
@@ -39,6 +41,13 @@ const UI_TEXT = {
     overlayNone: 'None',
     overlayGlossy: 'Glossy',
     overlayGrain: 'Grain',
+    background: 'Background',
+    removeBackground: 'Remove background',
+    removingBackground: 'Removing background…',
+    undoBackground: 'Restore background',
+    stitchOutline: 'Stitch outline',
+    stitchHint: 'Remove the background first to add a stitched edge.',
+    bgError: "Couldn't remove the background. Try a different photo.",
   },
   ko: {
     title: '✨ 포토 데코레이터',
@@ -63,6 +72,13 @@ const UI_TEXT = {
     overlayNone: '없음',
     overlayGlossy: '광택',
     overlayGrain: '그레인',
+    background: '배경',
+    removeBackground: '배경 제거',
+    removingBackground: '배경 제거 중…',
+    undoBackground: '배경 복원',
+    stitchOutline: '스티치 아웃라인',
+    stitchHint: '먼저 배경을 제거하면 바느질 테두리를 추가할 수 있어요.',
+    bgError: '배경을 제거하지 못했어요. 다른 사진으로 시도해보세요.',
   },
 }
 
@@ -76,6 +92,12 @@ const STICKER_SWATCHES = [
 
 function App() {
   const [image, setImage] = useState(null)
+  const [displayImage, setDisplayImage] = useState(null)
+  const [subjectMask, setSubjectMask] = useState(null)
+  const [bgRemoving, setBgRemoving] = useState(false)
+  const [bgRemoveError, setBgRemoveError] = useState(null)
+  const [stitchEnabled, setStitchEnabled] = useState(false)
+  const [stitchColor, setStitchColor] = useState('#ffffff')
   const [moodKey, setMoodKey] = useState(null)
   const [sceneKey, setSceneKey] = useState(null)
   const [frameStyle, setFrameStyle] = useState('solid')
@@ -141,6 +163,11 @@ function App() {
       URL.revokeObjectURL(url)
       objectUrlRef.current = null
       setImage(img)
+      setDisplayImage(img)
+      setSubjectMask(null)
+      setStitchEnabled(false)
+      setBgRemoveError(null)
+      preloadSegmenter() // warm the model in the background so the first click is fast
       const analysis = analyzeImage(img)
       const palette = extractPalette(analysis.imageData)
       const colors = frameColorsFromPalette(palette, { bright: analysis.avgL > 0.5 })
@@ -306,6 +333,41 @@ function App() {
     )
   }
 
+  const removeBackground = async () => {
+    if (!image || bgRemoving) return
+    setBgRemoving(true)
+    setBgRemoveError(null)
+    try {
+      const mask = await getSubjectMask(image)
+      const cutout = applyMaskToImage(image, mask)
+      setDisplayImage(cutout)
+      setSubjectMask(mask)
+    } catch (err) {
+      console.error('Background removal failed:', err)
+      setBgRemoveError(err.message || 'Background removal failed')
+    } finally {
+      setBgRemoving(false)
+    }
+  }
+
+  const undoBackgroundRemoval = () => {
+    setDisplayImage(image)
+    setSubjectMask(null)
+    setStitchEnabled(false)
+  }
+
+  const toggleStitch = () => {
+    setStitchEnabled((v) => !v)
+  }
+
+  // Contour is only recomputed when the mask changes, not on every render —
+  // tracing walks the whole mask boundary and isn't cheap enough to redo
+  // per frame.
+  const stitchContour = useMemo(
+    () => (subjectMask ? traceContour(subjectMask, 128) : null),
+    [subjectMask]
+  )
+
   const downloadImage = () => {
     const url = canvasApiRef.current?.exportDataURL()
     if (!url) return
@@ -317,6 +379,11 @@ function App() {
 
   const reset = () => {
     setImage(null)
+    setDisplayImage(null)
+    setSubjectMask(null)
+    setBgRemoving(false)
+    setBgRemoveError(null)
+    setStitchEnabled(false)
     setStickers([])
     setMoodKey(null)
     setSceneKey(null)
@@ -386,7 +453,9 @@ function App() {
             >
               <PhotoCanvas
                 ref={canvasApiRef}
-                image={image}
+                image={displayImage}
+                mask={subjectMask}
+                stitchOutline={stitchEnabled && stitchContour ? { contour: stitchContour, color: stitchColor } : null}
                 frameColors={frameColors || { base: '#eee', border: '#ccc', smallAccent: '#999', quoteBackground: '#faf7f2', quoteText: '#222' }}
                 frameStyle={frameStyle}
                 photoOverlay={photoOverlay}
@@ -471,6 +540,42 @@ function App() {
                   </button>
                 ))}
               </div>
+            </section>
+
+            <section>
+              <h3>{t.background}</h3>
+              {!subjectMask ? (
+                <button onClick={removeBackground} className="ghost" disabled={bgRemoving}>
+                  {bgRemoving ? t.removingBackground : t.removeBackground}
+                </button>
+              ) : (
+                <button onClick={undoBackgroundRemoval} className="ghost">
+                  {t.undoBackground}
+                </button>
+              )}
+              {bgRemoveError && <p className="hint bg-error">{t.bgError}</p>}
+
+              <div className="stitch-row">
+                <label className="stitch-toggle">
+                  <input
+                    type="checkbox"
+                    checked={stitchEnabled}
+                    onChange={toggleStitch}
+                    disabled={!subjectMask}
+                  />
+                  {t.stitchOutline}
+                </label>
+                {stitchEnabled && subjectMask && (
+                  <input
+                    type="color"
+                    className="swatch-custom"
+                    value={stitchColor}
+                    onChange={(e) => setStitchColor(e.target.value)}
+                    title={t.color}
+                  />
+                )}
+              </div>
+              {!subjectMask && <p className="hint">{t.stitchHint}</p>}
             </section>
 
             <section>

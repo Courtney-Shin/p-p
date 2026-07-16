@@ -3,6 +3,7 @@ import { drawFrame } from './frames'
 import { drawSticker } from './stickers'
 import { drawPhotoOverlay } from './photoOverlay'
 import { fontCssValue } from './fonts'
+import { drawStitchOutline } from './stitchOutline'
 
 const FRAME_THICKNESS_RATIO = 0.06
 const QUOTE_BAND_RATIO = 0.12
@@ -15,7 +16,7 @@ function containsHangul(str) {
 // Renders the photo + frame + stickers + quote onto a single canvas.
 // Exposes layout/export helpers to the parent via ref.
 const PhotoCanvas = forwardRef(function PhotoCanvas(
-  { image, frameColors, frameStyle, photoOverlay, stickers, quote, captionFont, canvasSize },
+  { image, mask, stitchOutline, frameColors, frameStyle, photoOverlay, stickers, quote, captionFont, canvasSize },
   ref
 ) {
   const canvasRef = useRef(null)
@@ -63,6 +64,31 @@ const PhotoCanvas = forwardRef(function PhotoCanvas(
     ctx.rect(photoX, photoY, photoW, photoH)
     ctx.clip()
     ctx.drawImage(image, sx, sy, sw, sh, photoX, photoY, photoW, photoH)
+
+    // stitch outline traces the background-removed subject's edge. The
+    // contour is in the mask's native pixel space (usually lower-res than
+    // the source photo), and only the [sx,sy,sw,sh] cover-fit crop of the
+    // full-resolution image is visible, so map mask -> image -> canvas.
+    if (mask && stitchOutline && stitchOutline.contour?.length > 1) {
+      const maskToImageX = image.width / mask.width
+      const maskToImageY = image.height / mask.height
+      const canvasPerImageX = photoW / sw
+      const canvasPerImageY = photoH / sh
+      const scaleX = maskToImageX * canvasPerImageX
+      const scaleY = maskToImageY * canvasPerImageY
+      const offsetX = photoX - sx * canvasPerImageX
+      const offsetY = photoY - sy * canvasPerImageY
+      drawStitchOutline(ctx, stitchOutline.contour, {
+        scaleX,
+        scaleY,
+        offsetX,
+        offsetY,
+        color: stitchOutline.color || '#ffffff',
+        dashLength: stitchOutline.dashLength,
+        gapLength: stitchOutline.gapLength,
+        lineWidth: stitchOutline.lineWidth,
+      })
+    }
     ctx.restore()
 
     // glossy/grain overlays apply to the photo itself, not the frame border
@@ -111,7 +137,7 @@ const PhotoCanvas = forwardRef(function PhotoCanvas(
       wrapText(ctx, quoteText, width / 2, height - quoteBand / 2, maxWidth, quoteBand * (isKorean ? 0.38 : 0.4))
       ctx.restore()
     }
-  }, [image, frameColors, frameStyle, photoOverlay, stickers, quote, captionFont, width, height, layout])
+  }, [image, mask, stitchOutline, frameColors, frameStyle, photoOverlay, stickers, quote, captionFont, width, height, layout])
 
   useEffect(() => {
     // document.fonts.ready alone doesn't guarantee a specific @font-face
