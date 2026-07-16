@@ -7,6 +7,12 @@ import { drawStitchOutline } from './stitchOutline'
 
 const FRAME_THICKNESS_RATIO = 0.06
 const QUOTE_BAND_RATIO = 0.12
+// Polaroid's signature look is a thin top/side margin and a much thicker
+// bottom margin (wide enough to hold a handwritten caption) — the classic
+// instant-photo proportions, distinct from every other frame style which
+// is uniform on all sides.
+const POLAROID_SIDE_RATIO = 0.045
+const POLAROID_BOTTOM_RATIO = 0.16
 
 // crude CJK detector: if the quote contains Hangul, use Korean-friendly type.
 function containsHangul(str) {
@@ -23,6 +29,18 @@ const PhotoCanvas = forwardRef(function PhotoCanvas(
   const { width, height } = canvasSize
 
   const layout = useCallback(() => {
+    if (frameStyle === 'polaroid') {
+      // Polaroid caption lives inside the card's own thick bottom margin,
+      // not in a separate band below it — quoteBand IS the bottom border.
+      const side = Math.round(width * POLAROID_SIDE_RATIO)
+      const top = side
+      const bottom = Math.round(height * POLAROID_BOTTOM_RATIO)
+      const photoX = side
+      const photoY = top
+      const photoW = width - side * 2
+      const photoH = height - top - bottom
+      return { thickness: side, top, bottom, quoteBand: bottom, photoX, photoY, photoW, photoH }
+    }
     const thickness = Math.round(Math.min(width, height) * FRAME_THICKNESS_RATIO)
     const quoteBand = Math.round(height * QUOTE_BAND_RATIO)
     const photoX = thickness
@@ -30,7 +48,7 @@ const PhotoCanvas = forwardRef(function PhotoCanvas(
     const photoW = width - thickness * 2
     const photoH = height - thickness * 2 - quoteBand
     return { thickness, quoteBand, photoX, photoY, photoW, photoH }
-  }, [width, height])
+  }, [width, height, frameStyle])
 
   const render = useCallback(() => {
     const canvas = canvasRef.current
@@ -42,7 +60,8 @@ const PhotoCanvas = forwardRef(function PhotoCanvas(
     ctx.fillStyle = bgColor
     ctx.fillRect(0, 0, width, height)
 
-    const { thickness, quoteBand, photoX, photoY, photoW, photoH } = layout()
+    const layoutResult = layout()
+    const { thickness, quoteBand, photoX, photoY, photoW, photoH } = layoutResult
 
     // draw photo, cover-fit into the photo rect
     const imgRatio = image.width / image.height
@@ -106,6 +125,8 @@ const PhotoCanvas = forwardRef(function PhotoCanvas(
       w: photoW,
       h: photoH,
       thickness,
+      top: layoutResult.top,
+      bottom: layoutResult.bottom,
       style: frameStyle,
       frameColors,
     })

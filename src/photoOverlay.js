@@ -43,17 +43,24 @@ function drawGlossySheen(ctx, x, y, w, h, intensity) {
 }
 
 function drawPhotoGrain(ctx, x, y, w, h, intensity) {
-  // fine monochrome speckle over the whole photo, like film grain
-  const density = 0.9 * intensity
+  // fine monochrome speckle over the whole photo, like film grain. Speckles
+  // are 1.5-2.5px (not 1px) and denser/higher-contrast than a strict
+  // realistic grain would be, since at normal viewing/export size a
+  // literal 1px-at-15%-opacity speckle field is imperceptible — this needs
+  // to actually read as a texture, not just be technically present.
+  const density = 1.6 * intensity
   const count = Math.floor(w * h * density * 0.012)
   ctx.save()
   for (let i = 0; i < count; i++) {
     const px = x + Math.random() * w
     const py = y + Math.random() * h
     const light = Math.random() > 0.5
-    ctx.fillStyle = light ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.3)'
-    ctx.globalAlpha = 0.12 + Math.random() * 0.18
-    ctx.fillRect(px, py, 1, 1)
+    const r = 0.8 + Math.random() * 1.2
+    ctx.fillStyle = light ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.45)'
+    ctx.globalAlpha = 0.3 + Math.random() * 0.35
+    ctx.beginPath()
+    ctx.arc(px, py, r, 0, Math.PI * 2)
+    ctx.fill()
   }
   ctx.restore()
 }

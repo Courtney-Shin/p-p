@@ -4,7 +4,7 @@
 // quality rather than its subject matter (no literal wood-frame-for-forest
 // novelty theming).
 
-export const FRAME_STYLES = ['solid', 'dots', 'stripes', 'grain', 'glossy', 'faded']
+export const FRAME_STYLES = ['solid', 'dots', 'stripes', 'grain', 'glossy', 'faded', 'polaroid']
 
 // Recommends a texture from photo-quality signals (brightness, variance as
 // a blur/detail proxy, saturation) — a starting suggestion, not a lock.
@@ -18,7 +18,14 @@ export function suggestTexture({ avgL, variance, avgS }) {
 // Paints a frame of `thickness` px around the rect (x, y, w, h) — i.e. the
 // border occupies the area between the outer rect and the inner photo rect.
 // frameColors: { base, border, smallAccent } hex strings from palette.js.
-export function drawFrame(ctx, { x, y, w, h, thickness, style, frameColors }) {
+// `top`/`bottom` (polaroid only) override thickness on those two edges so
+// the card can have the classic thin-top/thick-bottom instant-photo shape.
+export function drawFrame(ctx, { x, y, w, h, thickness, top, bottom, style, frameColors }) {
+  if (style === 'polaroid') {
+    drawPolaroidCard(ctx, { x, y, w, h, side: thickness, top: top ?? thickness, bottom: bottom ?? thickness, frameColors })
+    return
+  }
+
   const outerX = x - thickness
   const outerY = y - thickness
   const outerW = w + thickness * 2
@@ -118,4 +125,55 @@ function drawGrainNoise(ctx, x, y, w, h, color, density) {
     ctx.fill()
   }
   ctx.restore()
+}
+
+// Classic instant-photo card: thin white/cream margin on top and sides,
+// a much thicker bottom margin (where the caption sits), a faint paper
+// grain, and a soft drop shadow so it reads as a physical printed card
+// rather than just another border style.
+function drawPolaroidCard(ctx, { x, y, w, h, side, top, bottom, frameColors }) {
+  const outerX = x - side
+  const outerY = y - top
+  const outerW = w + side * 2
+  const outerH = h + top + bottom
+  // Polaroid card stock is always a neutral white/cream — it doesn't
+  // adopt the photo's palette the way the other frame styles do, since
+  // that's the one visually "correct" thing about a real Polaroid border.
+  const cardColor = frameColors?.quoteBackground && isLight(frameColors.quoteBackground)
+    ? frameColors.quoteBackground
+    : '#faf8f2'
+
+  ctx.save()
+  // soft drop shadow behind the whole card
+  ctx.shadowColor = 'rgba(0,0,0,0.18)'
+  ctx.shadowBlur = Math.max(8, side * 1.5)
+  ctx.shadowOffsetY = Math.max(3, side * 0.4)
+  ctx.fillStyle = cardColor
+  ctx.fillRect(outerX, outerY, outerW, outerH)
+  ctx.shadowColor = 'transparent'
+  ctx.shadowBlur = 0
+  ctx.shadowOffsetY = 0
+
+  // subtle paper grain across the card stock (not the photo itself)
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(outerX, outerY, outerW, outerH)
+  ctx.rect(x, y, w, h)
+  ctx.clip('evenodd')
+  drawGrainNoise(ctx, outerX, outerY, outerW, outerH, '#000', 0.02)
+  ctx.restore()
+
+  // faint inset line separating card stock from the photo
+  ctx.strokeStyle = 'rgba(0,0,0,0.12)'
+  ctx.lineWidth = 1
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1)
+  ctx.restore()
+}
+
+function isLight(hex) {
+  const n = hex.replace('#', '')
+  const r = parseInt(n.slice(0, 2), 16)
+  const g = parseInt(n.slice(2, 4), 16)
+  const b = parseInt(n.slice(4, 6), 16)
+  return (r * 299 + g * 587 + b * 114) / 1000 > 180
 }

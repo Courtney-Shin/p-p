@@ -6,7 +6,8 @@ import { FRAME_STYLES, suggestTexture } from './frames'
 import { PHOTO_OVERLAYS } from './photoOverlay'
 import { STICKER_SHAPES, drawSticker } from './stickers'
 import { analyzeImage } from './analyzeImage'
-import { extractPalette, frameColorsFromPalette } from './palette'
+import { extractPalette, frameColorsFromPalette, complementaryHex } from './palette'
+import ColorWheel from './ColorWheel'
 import { selectStickers, placeSticker, guessPhotoType, STICKER_COUNT_RANGES } from './stickerRules'
 import { DECORATION_MODES, DECORATION_MODE_KEYS, applyStickerCountBias } from './decorationModes'
 import { randomFont } from './fonts'
@@ -37,6 +38,7 @@ const UI_TEXT = {
     shuffleQuote: 'Shuffle quote',
     mode: 'Decoration mode',
     color: 'Color',
+    pickColor: 'Pick color',
     photoOverlay: 'Photo effect',
     overlayNone: 'None',
     overlayGlossy: 'Glossy',
@@ -68,6 +70,7 @@ const UI_TEXT = {
     shuffleQuote: '문구 바꾸기',
     mode: '데코 모드',
     color: '색상',
+    pickColor: '색상 선택',
     photoOverlay: '사진 효과',
     overlayNone: '없음',
     overlayGlossy: '광택',
@@ -98,6 +101,8 @@ function App() {
   const [bgRemoveError, setBgRemoveError] = useState(null)
   const [stitchEnabled, setStitchEnabled] = useState(false)
   const [stitchColor, setStitchColor] = useState('#ffffff')
+  const [stitchWheelOpen, setStitchWheelOpen] = useState(false)
+  const [stickerWheelOpen, setStickerWheelOpen] = useState(false)
   const [moodKey, setMoodKey] = useState(null)
   const [sceneKey, setSceneKey] = useState(null)
   const [frameStyle, setFrameStyle] = useState('solid')
@@ -342,6 +347,12 @@ function App() {
       const cutout = applyMaskToImage(image, mask)
       setDisplayImage(cutout)
       setSubjectMask(mask)
+      // Default the stitch color to the complement of the photo's dominant
+      // hue, so the stitching contrasts with the subject/background instead
+      // of blending in — same color-wheel logic the frame accent uses.
+      if (frameColors?.border) {
+        setStitchColor(complementaryHex(frameColors.border))
+      }
     } catch (err) {
       console.error('Background removal failed:', err)
       setBgRemoveError(err.message || 'Background removal failed')
@@ -566,15 +577,21 @@ function App() {
                   {t.stitchOutline}
                 </label>
                 {stitchEnabled && subjectMask && (
-                  <input
-                    type="color"
-                    className="swatch-custom"
-                    value={stitchColor}
-                    onChange={(e) => setStitchColor(e.target.value)}
-                    title={t.color}
-                  />
+                  <>
+                    <span className="swatch active" style={{ background: stitchColor }} title={stitchColor} />
+                    <button
+                      type="button"
+                      className="color-picker-toggle"
+                      onClick={() => setStitchWheelOpen((v) => !v)}
+                    >
+                      {t.pickColor}
+                    </button>
+                  </>
                 )}
               </div>
+              {stitchEnabled && subjectMask && stitchWheelOpen && (
+                <ColorWheel value={stitchColor} onChange={setStitchColor} />
+              )}
               {!subjectMask && <p className="hint">{t.stitchHint}</p>}
             </section>
 
@@ -622,14 +639,17 @@ function App() {
                         title={c}
                       />
                     ))}
-                    <input
-                      type="color"
-                      className="swatch-custom"
-                      value={selectedSticker.color}
-                      onChange={(e) => recolorSelected(e.target.value)}
-                      title={t.color}
-                    />
+                    <button
+                      type="button"
+                      className="color-picker-toggle"
+                      onClick={() => setStickerWheelOpen((v) => !v)}
+                    >
+                      {t.pickColor}
+                    </button>
                   </div>
+                  {stickerWheelOpen && (
+                    <ColorWheel value={selectedSticker.color} onChange={recolorSelected} />
+                  )}
                 </div>
               )}
               <p className="hint">{t.dragHint}</p>
