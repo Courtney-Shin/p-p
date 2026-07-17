@@ -25,39 +25,49 @@ export function drawPhotoOverlay(ctx, { x, y, w, h, style, intensity = 1 }) {
 }
 
 function drawGlossySheen(ctx, x, y, w, h, intensity) {
-  // soft diagonal highlight band, like light catching a glossy print
+  // Bright diagonal highlight band, like light catching a glossy print.
+  // Pushed noticeably stronger than a "subtle" print sheen would realistically
+  // be — at normal viewing size a truly subtle sheen reads as nothing.
   const grad = ctx.createLinearGradient(x, y, x + w * 0.7, y + h * 0.7)
-  grad.addColorStop(0, `rgba(255,255,255,${0.28 * intensity})`)
-  grad.addColorStop(0.18, `rgba(255,255,255,${0.1 * intensity})`)
-  grad.addColorStop(0.32, 'rgba(255,255,255,0)')
+  grad.addColorStop(0, `rgba(255,255,255,${0.55 * intensity})`)
+  grad.addColorStop(0.22, `rgba(255,255,255,${0.25 * intensity})`)
+  grad.addColorStop(0.4, 'rgba(255,255,255,0)')
   grad.addColorStop(1, 'rgba(255,255,255,0)')
   ctx.fillStyle = grad
   ctx.fillRect(x, y, w, h)
 
-  // subtle bottom-edge shadow for a glossy-print curl feel
-  const shadow = ctx.createLinearGradient(x, y + h * 0.82, x, y + h)
+  // second, tighter highlight streak for a more obviously "plastic/glossy"
+  // double-sheen look rather than one faint gradient
+  const streak = ctx.createLinearGradient(x + w * 0.1, y, x + w * 0.55, y + h * 0.45)
+  streak.addColorStop(0, `rgba(255,255,255,${0.35 * intensity})`)
+  streak.addColorStop(0.5, 'rgba(255,255,255,0)')
+  ctx.fillStyle = streak
+  ctx.fillRect(x, y, w, h)
+
+  // stronger bottom-edge shadow for a glossy-print curl feel
+  const shadow = ctx.createLinearGradient(x, y + h * 0.78, x, y + h)
   shadow.addColorStop(0, 'rgba(0,0,0,0)')
-  shadow.addColorStop(1, `rgba(0,0,0,${0.12 * intensity})`)
+  shadow.addColorStop(1, `rgba(0,0,0,${0.28 * intensity})`)
   ctx.fillStyle = shadow
-  ctx.fillRect(x, y + h * 0.82, w, h * 0.18)
+  ctx.fillRect(x, y + h * 0.78, w, h * 0.22)
 }
 
 function drawPhotoGrain(ctx, x, y, w, h, intensity) {
-  // fine monochrome speckle over the whole photo, like film grain. Speckles
-  // are 1.5-2.5px (not 1px) and denser/higher-contrast than a strict
-  // realistic grain would be, since at normal viewing/export size a
-  // literal 1px-at-15%-opacity speckle field is imperceptible — this needs
-  // to actually read as a texture, not just be technically present.
-  const density = 1.6 * intensity
+  // Fine monochrome speckle over the whole photo, like film grain. Pushed
+  // considerably denser/higher-contrast than a "realistic" grain would be
+  // — at normal viewing/export size, subtle grain is imperceptible, so
+  // this needs to visibly read as a texture rather than just technically
+  // modify a few pixels.
+  const density = 3.2 * intensity
   const count = Math.floor(w * h * density * 0.012)
   ctx.save()
   for (let i = 0; i < count; i++) {
     const px = x + Math.random() * w
     const py = y + Math.random() * h
     const light = Math.random() > 0.5
-    const r = 0.8 + Math.random() * 1.2
-    ctx.fillStyle = light ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.45)'
-    ctx.globalAlpha = 0.3 + Math.random() * 0.35
+    const r = 1 + Math.random() * 1.6
+    ctx.fillStyle = light ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)'
+    ctx.globalAlpha = 0.45 + Math.random() * 0.4
     ctx.beginPath()
     ctx.arc(px, py, r, 0, Math.PI * 2)
     ctx.fill()

@@ -144,29 +144,71 @@ function drawPolaroidCard(ctx, { x, y, w, h, side, top, bottom, frameColors }) {
     : '#faf8f2'
 
   ctx.save()
-  // soft drop shadow behind the whole card
-  ctx.shadowColor = 'rgba(0,0,0,0.18)'
-  ctx.shadowBlur = Math.max(8, side * 1.5)
-  ctx.shadowOffsetY = Math.max(3, side * 0.4)
-  ctx.fillStyle = cardColor
-  ctx.fillRect(outerX, outerY, outerW, outerH)
-  ctx.shadowColor = 'transparent'
-  ctx.shadowBlur = 0
-  ctx.shadowOffsetY = 0
-
-  // subtle paper grain across the card stock (not the photo itself)
+  // Drop shadow: draw it from a shape clipped to ONLY the border band
+  // (evenodd, outer minus photo rect) so the shadow-casting fill can never
+  // paint over the photo — canvas shadows are cast by whatever actually
+  // gets painted, so if the fill itself isn't clipped, neither is its shadow.
   ctx.save()
   ctx.beginPath()
   ctx.rect(outerX, outerY, outerW, outerH)
   ctx.rect(x, y, w, h)
   ctx.clip('evenodd')
+  ctx.shadowColor = 'rgba(0,0,0,0.18)'
+  ctx.shadowBlur = Math.max(8, side * 1.5)
+  ctx.shadowOffsetY = Math.max(3, side * 0.4)
+  ctx.fillStyle = cardColor
+  ctx.fillRect(outerX, outerY, outerW, outerH)
+  ctx.restore()
+
+  // Card-stock fill + grain, clipped to the border band only (evenodd:
+  // outer rect minus inner photo rect) — without this clip the fill
+  // paints straight over the already-drawn photo, erasing it.
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(outerX, outerY, outerW, outerH)
+  ctx.rect(x, y, w, h)
+  ctx.clip('evenodd')
+  ctx.fillStyle = cardColor
+  ctx.fillRect(outerX, outerY, outerW, outerH)
   drawGrainNoise(ctx, outerX, outerY, outerW, outerH, '#000', 0.02)
   ctx.restore()
 
-  // faint inset line separating card stock from the photo
+  // Faint inset line separating card stock from the photo.
   ctx.strokeStyle = 'rgba(0,0,0,0.12)'
   ctx.lineWidth = 1
   ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1)
+
+  // Polaroid-specific photo treatment: warm-tinted vignette + soft corner
+  // sheen, applied over the PHOTO area (clipped to it), so the shot itself
+  // reads as an aged instant print rather than a plain photo in a frame.
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(x, y, w, h)
+  ctx.clip()
+
+  // warm vintage color cast
+  ctx.fillStyle = 'rgba(255, 220, 170, 0.1)'
+  ctx.fillRect(x, y, w, h)
+
+  // soft vignette (darker corners, clear center) via radial gradient
+  const cx = x + w / 2
+  const cy = y + h / 2
+  const vignette = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.25, cx, cy, Math.max(w, h) * 0.72)
+  vignette.addColorStop(0, 'rgba(0,0,0,0)')
+  vignette.addColorStop(1, 'rgba(40,25,10,0.28)')
+  ctx.fillStyle = vignette
+  ctx.fillRect(x, y, w, h)
+
+  // faint diagonal light flare from the top corner, the classic
+  // instant-camera flash-bounce look
+  const flare = ctx.createRadialGradient(x + w * 0.12, y + h * 0.1, 0, x + w * 0.12, y + h * 0.1, w * 0.55)
+  flare.addColorStop(0, 'rgba(255,255,255,0.35)')
+  flare.addColorStop(0.4, 'rgba(255,255,255,0.08)')
+  flare.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = flare
+  ctx.fillRect(x, y, w, h)
+
+  ctx.restore()
   ctx.restore()
 }
 
