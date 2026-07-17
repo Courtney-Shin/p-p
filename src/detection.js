@@ -36,10 +36,31 @@ const COCO_LABEL_TO_SCENE = {
   dog: 'pet',
   cat: 'pet',
   bird: 'pet',
+  horse: 'pet',
   'dining table': 'cafe',
   cup: 'cafe',
   'wine glass': 'cafe',
+  fork: 'cafe',
+  knife: 'cafe',
+  spoon: 'cafe',
+  bowl: 'cafe',
   umbrella: 'street',
+  handbag: 'street',
+  suitcase: 'street',
+  backpack: 'street',
+  'traffic light': 'street',
+  'fire hydrant': 'street',
+  'stop sign': 'street',
+  bench: 'park',
+  'potted plant': 'park',
+  bicycle: 'park',
+  frisbee: 'park',
+  kite: 'park',
+  surfboard: 'beach',
+  boat: 'beach',
+  couch: 'party',
+  tv: 'party',
+  'wine bottle': 'party',
 }
 
 const COCO_LABEL_TO_CATEGORY = {
@@ -47,16 +68,36 @@ const COCO_LABEL_TO_CATEGORY = {
   dog: 'pet',
   cat: 'pet',
   bird: 'pet',
+  horse: 'pet',
   cake: 'food',
   cup: 'food',
   'wine glass': 'food',
   bottle: 'food',
+  bowl: 'food',
+  sandwich: 'food',
+  pizza: 'food',
+  donut: 'food',
   'dining table': 'furniture',
   chair: 'furniture',
   couch: 'furniture',
+  bench: 'furniture',
   umbrella: 'accessory',
   backpack: 'accessory',
   handbag: 'accessory',
+  suitcase: 'accessory',
+}
+
+// If detection finds people but no scene-triggering object, and the frame
+// is dominated by one or two people (no crowd, no strong environmental
+// object), a portrait-style scene is a better default than silently
+// leaving whatever the color heuristic guessed — otherwise "Analyze with
+// AI" can visibly do nothing even though it genuinely found real objects.
+function inferPortraitFallback(detections) {
+  const people = detections.filter((d) => d.label === 'person')
+  const nonPeopleStrong = detections.filter((d) => d.label !== 'person' && d.confidence >= CONFIDENCE.MEDIUM)
+  if (people.length === 0) return null
+  if (nonPeopleStrong.length > 0) return null // let a stronger object-based scene win instead
+  return people.length === 1 ? 'selfie' : 'instaBack'
 }
 
 // Maps a scene category to a plausible coarse object guess with a modest
@@ -146,7 +187,12 @@ export async function detectReal(imgEl, { onProgress } = {}) {
   const sceneOverride = detections
     .filter((d) => COCO_LABEL_TO_SCENE[d.label] && d.confidence >= CONFIDENCE.MEDIUM)
     .sort((a, b) => b.confidence - a.confidence)[0]
-  if (sceneOverride) scene = COCO_LABEL_TO_SCENE[sceneOverride.label]
+  if (sceneOverride) {
+    scene = COCO_LABEL_TO_SCENE[sceneOverride.label]
+  } else {
+    const portraitScene = inferPortraitFallback(detections)
+    if (portraitScene) scene = portraitScene
+  }
 
   // Subject zone: union of detected person boxes if any people were found,
   // otherwise fall back to the center-frame proxy used by the stub.

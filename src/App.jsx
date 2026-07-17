@@ -55,9 +55,11 @@ const UI_TEXT = {
     aiAnalysis: 'AI photo analysis',
     aiAnalyzeButton: 'Analyze with AI (~45MB download, one-time)',
     aiAnalyzing: 'Analyzing…',
+    aiStarting: 'Starting… (first run downloads a model, may take 10–30s)',
     aiDownloading: 'Downloading model… {pct}%',
     aiError: 'AI analysis failed. Your current color-based guess is still active.',
     aiDetected: 'Detected:',
+    aiNothingDetected: "AI ran but didn't confidently recognize anything specific — your color-based scene/stickers are unchanged.",
     aiHint: "Free, runs fully in your browser — nothing is uploaded anywhere. First use downloads a ~45MB model; after that it's instant.",
   },
   ko: {
@@ -95,9 +97,11 @@ const UI_TEXT = {
     aiAnalysis: 'AI 사진 분석',
     aiAnalyzeButton: 'AI로 분석하기 (최초 1회 약 45MB 다운로드)',
     aiAnalyzing: '분석 중…',
+    aiStarting: '시작하는 중… (처음 실행 시 모델을 받느라 10~30초 정도 걸릴 수 있어요)',
     aiDownloading: '모델 다운로드 중… {pct}%',
     aiError: 'AI 분석에 실패했어요. 기존 색상 기반 추측은 그대로 유지됩니다.',
     aiDetected: '감지된 항목:',
+    aiNothingDetected: 'AI가 실행됐지만 확실하게 인식한 게 없어요 — 기존 색상 기반 장면/스티커가 그대로 유지됩니다.',
     aiHint: '무료이고 브라우저 안에서만 실행돼요 — 어디에도 업로드되지 않습니다. 처음 한 번만 약 45MB 모델을 받고, 이후엔 바로 실행돼요.',
   },
 }
@@ -633,13 +637,15 @@ function App() {
                 {aiAnalyzing
                   ? aiProgress > 0
                     ? t.aiDownloading.replace('{pct}', aiProgress)
-                    : t.aiAnalyzing
+                    : t.aiStarting
                   : t.aiAnalyzeButton}
               </button>
               {aiError && <p className="hint bg-error">{t.aiError}</p>}
-              {aiObjects && aiObjects.length > 0 && (
+              {aiObjects && (
                 <p className="hint">
-                  {t.aiDetected} {aiObjects.map((o) => o.name).join(', ')}
+                  {aiObjects.length > 0
+                    ? `${t.aiDetected} ${aiObjects.map((o) => o.name).join(', ')}`
+                    : t.aiNothingDetected}
                 </p>
               )}
               <p className="hint">{t.aiHint}</p>

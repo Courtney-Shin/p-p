@@ -64,7 +64,7 @@ function toCanvas(imgEl) {
 // Runs detection on an HTMLImageElement/canvas, returns a list of
 // { label, confidence, box: {x, y, w, h} } with box in 0-1 fractions of
 // the image (not pixels), so callers don't need to know source resolution.
-export async function detectObjects(imgEl, { threshold = 0.6, onProgress } = {}) {
+export async function detectObjects(imgEl, { threshold = 0.4, onProgress } = {}) {
   const detector = await getDetector(onProgress)
   const input = toCanvas(imgEl)
   const results = await detector(input, { threshold, percentage: true })
