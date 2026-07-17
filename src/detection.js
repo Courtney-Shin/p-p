@@ -18,10 +18,45 @@
 // }
 
 import { analyzeImage } from './analyzeImage'
+import { detectObjects } from './objectDetection'
 
 const CONFIDENCE = {
   HIGH: 0.8,
   MEDIUM: 0.55,
+}
+
+// Maps DETR's COCO-80 labels to this app's scene keys. Only listed when a
+// detected object is a strong, near-unambiguous signal for that scene —
+// e.g. "cake" almost certainly means birthday/celebration context, but
+// "chair" is too generic to force a scene on its own.
+// DETR/COCO labels are space-separated lowercase strings (e.g. "dining
+// table", "wine glass") — not underscored — per the model's id2label map.
+const COCO_LABEL_TO_SCENE = {
+  cake: 'birthday',
+  dog: 'pet',
+  cat: 'pet',
+  bird: 'pet',
+  'dining table': 'cafe',
+  cup: 'cafe',
+  'wine glass': 'cafe',
+  umbrella: 'street',
+}
+
+const COCO_LABEL_TO_CATEGORY = {
+  person: 'person',
+  dog: 'pet',
+  cat: 'pet',
+  bird: 'pet',
+  cake: 'food',
+  cup: 'food',
+  'wine glass': 'food',
+  bottle: 'food',
+  'dining table': 'furniture',
+  chair: 'furniture',
+  couch: 'furniture',
+  umbrella: 'accessory',
+  backpack: 'accessory',
+  handbag: 'accessory',
 }
 
 // Maps a scene category to a plausible coarse object guess with a modest
@@ -83,6 +118,61 @@ export function detectStub(imgEl) {
     scene,
     source: 'heuristic-stub', // marks this as approximate, not real vision
   }
+}
+
+// Real detection path: runs DETR object detection and produces the same
+// DetectionResult shape as detectStub, so every downstream consumer
+// (scene selection, sticker rules, subject-avoidance placement) works
+// unmodified regardless of which detector produced the result. Falls back
+// to the color-heuristic stub's scene/mood fields for anything DETR can't
+// tell us (DETR finds objects; it has no idea if a photo is "moody").
+export async function detectReal(imgEl, { onProgress } = {}) {
+  const analysis = analyzeImage(imgEl)
+  const detections = await detectObjects(imgEl, { threshold: 0.6, onProgress })
+
+  const objects = detections.map((d) => ({
+    name: d.label,
+    category: COCO_LABEL_TO_CATEGORY[d.label] || 'other',
+    confidence: d.confidence,
+    region: d.box,
+  }))
+
+  const peopleCountGuess = detections.filter((d) => d.label === 'person').length || null
+
+  // Prefer a scene implied by a high-confidence detected object (e.g. a
+  // cake really does mean "birthday") over the color-heuristic guess;
+  // otherwise keep the heuristic scene as-is.
+  let scene = analysis.scene
+  const sceneOverride = detections
+    .filter((d) => COCO_LABEL_TO_SCENE[d.label] && d.confidence >= CONFIDENCE.MEDIUM)
+    .sort((a, b) => b.confidence - a.confidence)[0]
+  if (sceneOverride) scene = COCO_LABEL_TO_SCENE[sceneOverride.label]
+
+  // Subject zone: union of detected person boxes if any people were found,
+  // otherwise fall back to the center-frame proxy used by the stub.
+  const personBoxes = detections.filter((d) => d.label === 'person').map((d) => d.box)
+  const subjectZone = personBoxes.length > 0 ? unionBoxes(personBoxes) : { x: 0.2, y: 0.15, w: 0.6, h: 0.65 }
+
+  return {
+    analysis,
+    objects,
+    activity: SCENE_ACTIVITY[scene] || null,
+    setting: SCENE_SETTING[scene] || null,
+    mood: analysis.mood,
+    brightness: analysis.avgL,
+    subjectZone,
+    peopleCountGuess,
+    scene,
+    source: 'detr-resnet-50', // marks this as a real model result, not a guess
+  }
+}
+
+function unionBoxes(boxes) {
+  const x = Math.min(...boxes.map((b) => b.x))
+  const y = Math.min(...boxes.map((b) => b.y))
+  const right = Math.max(...boxes.map((b) => b.x + b.w))
+  const bottom = Math.max(...boxes.map((b) => b.y + b.h))
+  return { x, y, w: right - x, h: bottom - y }
 }
 
 export function confidenceTier(confidence) {

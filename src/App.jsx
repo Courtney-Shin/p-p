@@ -13,6 +13,7 @@ import { DECORATION_MODES, DECORATION_MODE_KEYS, applyStickerCountBias } from '.
 import { randomFont } from './fonts'
 import { getSubjectMask, applyMaskToImage, preloadSegmenter } from './backgroundRemoval'
 import { traceContour } from './stitchOutline'
+import { detectReal } from './detection'
 import './App.css'
 
 const CANVAS_SIZE = { width: 640, height: 760 }
@@ -51,6 +52,13 @@ const UI_TEXT = {
     stitchOutline: 'Stitch outline',
     stitchHint: 'Remove the background first to add a stitched edge.',
     bgError: "Couldn't detect a person to cut out. Try a different photo.",
+    aiAnalysis: 'AI photo analysis',
+    aiAnalyzeButton: 'Analyze with AI (~45MB download, one-time)',
+    aiAnalyzing: 'Analyzing…',
+    aiDownloading: 'Downloading model… {pct}%',
+    aiError: 'AI analysis failed. Your current color-based guess is still active.',
+    aiDetected: 'Detected:',
+    aiHint: "Free, runs fully in your browser — nothing is uploaded anywhere. First use downloads a ~45MB model; after that it's instant.",
   },
   ko: {
     title: '✨ 포토 데코레이터',
@@ -84,6 +92,13 @@ const UI_TEXT = {
     stitchOutline: '스티치 아웃라인',
     stitchHint: '먼저 배경을 제거하면 바느질 테두리를 추가할 수 있어요.',
     bgError: '사진에서 인물을 찾지 못했어요. 다른 사진으로 시도해보세요.',
+    aiAnalysis: 'AI 사진 분석',
+    aiAnalyzeButton: 'AI로 분석하기 (최초 1회 약 45MB 다운로드)',
+    aiAnalyzing: '분석 중…',
+    aiDownloading: '모델 다운로드 중… {pct}%',
+    aiError: 'AI 분석에 실패했어요. 기존 색상 기반 추측은 그대로 유지됩니다.',
+    aiDetected: '감지된 항목:',
+    aiHint: '무료이고 브라우저 안에서만 실행돼요 — 어디에도 업로드되지 않습니다. 처음 한 번만 약 45MB 모델을 받고, 이후엔 바로 실행돼요.',
   },
 }
 
@@ -119,6 +134,10 @@ function App() {
   const [selectedStickerId, setSelectedStickerId] = useState(null)
   const [dragging, setDragging] = useState(null)
   const [detection, setDetection] = useState(null)
+  const [aiAnalyzing, setAiAnalyzing] = useState(false)
+  const [aiProgress, setAiProgress] = useState(0)
+  const [aiError, setAiError] = useState(null)
+  const [aiObjects, setAiObjects] = useState(null)
   const fileInputRef = useRef(null)
   const canvasApiRef = useRef(null)
   const objectUrlRef = useRef(null)
@@ -129,13 +148,15 @@ function App() {
   const t = UI_TEXT[lang]
   const selectedSticker = stickers.find((s) => s.id === selectedStickerId) || null
 
-  const regenerateStickers = (analysis, palette, modePreset) => {
+  const regenerateStickers = (analysis, palette, modePreset, subjectZoneOverride) => {
     const photoType = guessPhotoType({ scene: analysis.scene, variance: analysis.variance })
     const baseRange = STICKER_COUNT_RANGES[photoType] || STICKER_COUNT_RANGES.group
     const biasedRange = applyStickerCountBias(baseRange, modePreset.stickerCountBias)
     const picks = selectStickers({ scene: analysis.scene, photoType, palette }).slice(0, biasedRange[1])
 
-    const subjectZone = { x: 0.2, y: 0.15, w: 0.6, h: 0.65 }
+    // Real detection gives an actual person bounding box; without it, fall
+    // back to the center-frame proxy used throughout the color-heuristic path.
+    const subjectZone = subjectZoneOverride || { x: 0.2, y: 0.15, w: 0.6, h: 0.65 }
     const candidateStickers = picks.map((pick, i) => {
       const radius = 0.045 + (i % 2 === 0 ? 0.01 : 0)
       const { x, y } = placeSticker({ index: i, radius, subjectZone })
@@ -353,6 +374,39 @@ function App() {
     )
   }
 
+  const analyzeWithAI = async () => {
+    if (!image || aiAnalyzing) return
+    setAiAnalyzing(true)
+    setAiError(null)
+    setAiProgress(0)
+    try {
+      const result = await detectReal(image, {
+        onProgress: (p) => {
+          // transformers.js progress events report per-file download
+          // progress; only 'progress' events carry a usable percentage.
+          if (p?.status === 'progress' && typeof p.progress === 'number') {
+            setAiProgress(Math.round(p.progress))
+          }
+        },
+      })
+      setDetection(result)
+      setAiObjects(result.objects)
+      setSceneKey(result.scene)
+
+      const palette = extractPalette(result.analysis.imageData)
+      regenerateStickers(result, palette, mode, result.subjectZone)
+
+      const { text, category } = randomSceneQuote(result.scene, lang, lastCategory, mode.captionWeights)
+      setQuote(text)
+      setLastCategory(category)
+    } catch (err) {
+      console.error('AI analysis failed:', err)
+      setAiError(err.message || 'AI analysis failed')
+    } finally {
+      setAiAnalyzing(false)
+    }
+  }
+
   const removeBackground = async () => {
     if (!image || bgRemoving) return
     setBgRemoving(true)
@@ -419,6 +473,10 @@ function App() {
     setFrameColors(null)
     setPhotoOverlay('none')
     setCaptionFont(null)
+    setAiAnalyzing(false)
+    setAiProgress(0)
+    setAiError(null)
+    setAiObjects(null)
   }
 
   useEffect(() => {
@@ -567,6 +625,24 @@ function App() {
                   </button>
                 ))}
               </div>
+            </section>
+
+            <section>
+              <h3>{t.aiAnalysis}</h3>
+              <button onClick={analyzeWithAI} className="ghost" disabled={aiAnalyzing}>
+                {aiAnalyzing
+                  ? aiProgress > 0
+                    ? t.aiDownloading.replace('{pct}', aiProgress)
+                    : t.aiAnalyzing
+                  : t.aiAnalyzeButton}
+              </button>
+              {aiError && <p className="hint bg-error">{t.aiError}</p>}
+              {aiObjects && aiObjects.length > 0 && (
+                <p className="hint">
+                  {t.aiDetected} {aiObjects.map((o) => o.name).join(', ')}
+                </p>
+              )}
+              <p className="hint">{t.aiHint}</p>
             </section>
 
             <section>
